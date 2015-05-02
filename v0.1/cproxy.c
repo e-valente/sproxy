@@ -1,10 +1,9 @@
-/*sproxy.c connects to the real telnet server
- * It should listen to port 6200
+/*cproxy.c is used on client machine
+ * It should listen to port 5200
  *Date: Thu Apr 23 23:38:20 MST 2015
  *Contact: emanuelvalente@gmail.com
  *
 */
-
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,16 +15,15 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "protocol.h"
+#define MAXPAYLOAD 10000
+#define LISTEN_PORT 5200
+#define SPROXY_PORT 6200
+//#define SPROXY_PORT 23b
 
+int startSProxyClient(char *serverIPAddr, int port);
+void startCProxyServer();
 
-#define LISTEN_PORT 6200
-#define TELNET_PORT 23
-
-int startTelnetClient(char *serverIPAddr, int port);
-void startSProxyServer();
-
-int socketFromTelnetServer, socketFromCProxy;
+int socketFromTelnetClient, socketFromSProxy;
 
 
 char payload[MAXPAYLOAD];
@@ -36,17 +34,14 @@ void error(char *msg){
 }
 
 /*It will receive incoming connections from the CProxy client*/
-void startSProxyServer() {
+void startCProxyServer(char *sproxyIPAddr) {
 
   int sockfd, bytes_received, bytes_sent;
   socklen_t clientlen;
   struct sockaddr_in local_serv_addr, client_addr, serv_addr;
   fd_set readfds;
   struct timeval tv;
-  int ret, n;
-  appData_t dataPacket;
-  heartBeat_t heartBeatPacket;
-  proxyPacket_t proxyHeaderPacket;
+  int n, ret;
 
   /*create a stream socket (TCP)*/
   sockfd = socket (AF_INET, SOCK_STREAM, 0);
@@ -68,47 +63,55 @@ void startSProxyServer() {
 
   /*accept first incoming connection on the pending queue,
   returns a new file descriptor*/
-  socketFromCProxy = accept(sockfd, (struct sockaddr *) &client_addr, &clientlen);
+  socketFromTelnetClient = accept(sockfd, (struct sockaddr *) &client_addr, &clientlen);
 
-  if(socketFromCProxy < 0)
+  if(socketFromTelnetClient < 0)
     error("ERROR on accept");
 
-  /*connects to the *real* telnet server*/
-  socketFromTelnetServer = socket (AF_INET, SOCK_STREAM, 0);
-  if (socketFromTelnetServer < 0)
+  /*connects to the SPROXY server*/
+  socketFromSProxy = socket (AF_INET, SOCK_STREAM, 0);
+  if (socketFromSProxy < 0)
     error ("ERROR opening socket\n");
 
   memset(&serv_addr, 0, sizeof(serv_addr));
 
   serv_addr.sin_family = AF_INET;
   /*convert and copy server's ip addr into serv_addr*/
-  if(inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) < 0)
-    error ("ERROR, copying ip addr\n");
-
-  serv_addr.sin_port = htons(TELNET_PORT);
-   if (connect(socketFromTelnetServer,(struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+  if(inet_pton(AF_INET, sproxyIPAddr, &serv_addr.sin_addr) <= 0) {
+      fprintf(stderr, "%s is a bad address!\n", sproxyIPAddr);
+      error ("ERROR, copying server ip address");
+    }
+  serv_addr.sin_port = htons(SPROXY_PORT);
+  /* connect to server */
+  if (connect(socketFromSProxy,(struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
     error ("ERROR connecting");
-
-   /*fprintf(stderr, "TELNET:\n%s\n", payload);*/
-
 
   /*At this point we have two active sockets:
    * one is socketFromTelnetClient connected to the end user
    * and socketFromTelnetClient connected to the SProxy
    * */
 
-   /*populating the packet headers*/
-   dataPacket.type = APP_DATA;
-   heartBeatPacket.type = HEARTBEAT_TYPE;
+  /*testing... */
+  /*
+  strcpy(payload, "ma oi!");
+  bytes_sent = send(socketFromTelnetClient, payload, (sizeof(char) * strlen(payload) + 1), 0);
+  if (bytes_sent < 0)
+    error ("ERROR writing to socket");
+
+  memset(payload, 0, sizeof(char)* MAXPAYLOAD);
+  bytes_received = recv(socketFromTelnetClient, payload, sizeof(char) * MAXPAYLOAD, 0);
+
+  fprintf(stderr, "TELNET:\n%s\n", payload);
+  */
+  /*end of test*/
 
   while(1) {
 
   /*clear the set ahead of time*/
   FD_ZERO(&readfds);
-  //FD_SET(socketFromTelnetServer, &readfds);
+  FD_SET(socketFromTelnetClient, &readfds);
   /*this socket is going to be "greater"*/
-  FD_SET(socketFromCProxy, &readfds);
-  FD_SET(socketFromTelnetServer, &readfds);
+  FD_SET(socketFromSProxy, &readfds);
 
 
   /*setting our delay for the events*/
@@ -116,7 +119,7 @@ void startSProxyServer() {
   tv.tv_usec = 500000;
 
   /*param for select()*/
-  n = socketFromTelnetServer+ 1;
+  n = socketFromSProxy + 1;
 
   ret = select(n, &readfds, NULL, NULL, &tv);
 
@@ -126,18 +129,16 @@ void startSProxyServer() {
       fprintf(stderr, "Timeout occurred! No data after the specified time!\n");
   else {
       /*one of the both sockets has data to be received*/
-      if(FD_ISSET(socketFromTelnetServer, &readfds)) {
-          bytes_received = recv(socketFromTelnetServer, dataPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-          //proxyHeaderPacket.type = APP_DATA;
-          //send(socketFromCProxy, &proxyHeaderPacket, sizeof(proxyHeaderPacket), 0);
-          send(socketFromCProxy, dataPacket.payload, sizeof(char) * bytes_received, 0);
-          fprintf(stderr,"telnet server -> cproxy %d bytes\n", bytes_received);
+      if(FD_ISSET(socketFromTelnetClient, &readfds)) {
+          bytes_received = recv(socketFromTelnetClient, payload, sizeof(char) * MAXPAYLOAD, 0);
+          send(socketFromSProxy, payload, sizeof(char) * bytes_received, 0);
+          fprintf(stderr,"user -> telnet %d bytes\n", bytes_received);
       }
 
-      if(FD_ISSET(socketFromCProxy, &readfds)) {
-          bytes_received = recv(socketFromCProxy, dataPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-          send(socketFromTelnetServer, dataPacket.payload, sizeof(char) * bytes_received, 0);
-          fprintf(stderr,"cproxy -> telnet server %d bytes\n", bytes_received);
+      if(FD_ISSET(socketFromSProxy, &readfds)) {
+          bytes_received = recv(socketFromSProxy, payload, sizeof(char) * MAXPAYLOAD, 0);
+          send(socketFromTelnetClient, payload, sizeof(char) * bytes_received, 0);
+          fprintf(stderr,"telnet -> user %d bytes\n", bytes_received);
       }
 
 
@@ -148,8 +149,8 @@ void startSProxyServer() {
   }
 
 
-  close (socketFromCProxy);
-  close(socketFromTelnetServer);
+  close (socketFromSProxy);
+  close(socketFromTelnetClient);
   close (sockfd);
 
 }
@@ -158,7 +159,12 @@ void startSProxyServer() {
 
 int main(int argc, char * argv[]){
 
- startSProxyServer();
+    if(argc != 2) {
+        fprintf(stderr, "Usage: %s <server_ip_addr>\n", argv[0]);
+        exit(1);
+    }
+
+    startCProxyServer(argv[1]);
 
   return 0;
 }

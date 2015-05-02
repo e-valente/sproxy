@@ -16,9 +16,7 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "protocol.h"
-
-
+#define MAXPAYLOAD 10000
 #define LISTEN_PORT 6200
 #define TELNET_PORT 23
 
@@ -44,9 +42,6 @@ void startSProxyServer() {
   fd_set readfds;
   struct timeval tv;
   int ret, n;
-  appData_t dataPacket;
-  heartBeat_t heartBeatPacket;
-  proxyPacket_t proxyHeaderPacket;
 
   /*create a stream socket (TCP)*/
   sockfd = socket (AF_INET, SOCK_STREAM, 0);
@@ -97,9 +92,6 @@ void startSProxyServer() {
    * and socketFromTelnetClient connected to the SProxy
    * */
 
-   /*populating the packet headers*/
-   dataPacket.type = APP_DATA;
-   heartBeatPacket.type = HEARTBEAT_TYPE;
 
   while(1) {
 
@@ -127,16 +119,14 @@ void startSProxyServer() {
   else {
       /*one of the both sockets has data to be received*/
       if(FD_ISSET(socketFromTelnetServer, &readfds)) {
-          bytes_received = recv(socketFromTelnetServer, dataPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-          //proxyHeaderPacket.type = APP_DATA;
-          //send(socketFromCProxy, &proxyHeaderPacket, sizeof(proxyHeaderPacket), 0);
-          send(socketFromCProxy, dataPacket.payload, sizeof(char) * bytes_received, 0);
+          bytes_received = recv(socketFromTelnetServer, payload, sizeof(char) * MAXPAYLOAD, 0);
+          send(socketFromCProxy, payload, sizeof(char) * bytes_received, 0);
           fprintf(stderr,"telnet server -> cproxy %d bytes\n", bytes_received);
       }
 
       if(FD_ISSET(socketFromCProxy, &readfds)) {
-          bytes_received = recv(socketFromCProxy, dataPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-          send(socketFromTelnetServer, dataPacket.payload, sizeof(char) * bytes_received, 0);
+          bytes_received = recv(socketFromCProxy, payload, sizeof(char) * MAXPAYLOAD, 0);
+          send(socketFromTelnetServer, payload, sizeof(char) * bytes_received, 0);
           fprintf(stderr,"cproxy -> telnet server %d bytes\n", bytes_received);
       }
 
