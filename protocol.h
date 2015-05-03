@@ -4,8 +4,8 @@
 #endif // PROTOCOL_H
 
 #define HEARTBEAT_TYPE 0
-#define NEW_CONNECTION_INI 1
-#define APP_DATA 2
+#define NEW_CONNECTION_INI_TYPE 1
+#define APP_DATA_TYPE 2
 
 #define MAXPAYLOAD 10000
 
@@ -22,6 +22,8 @@ typedef struct appdata{
 
 typedef struct proxypacket{
     unsigned char type;
+    char payload[MAXPAYLOAD];
+
 }proxyPacket_t;
 
 

@@ -45,6 +45,8 @@ void startCProxyServer(char *sproxyIPAddr) {
   struct timeval tv;
   int n, ret;
   appData_t dataPacket;
+  proxyPacket_t proxyPacket;
+  int heartBeatCount;
 
   /*create a stream socket (TCP)*/
   sockfd = socket (AF_INET, SOCK_STREAM, 0);
@@ -109,7 +111,8 @@ void startCProxyServer(char *sproxyIPAddr) {
   /*end of test*/
 
   /*pooulating packet*/
-  dataPacket.type = APP_DATA;
+  dataPacket.type = APP_DATA_TYPE;
+  heartBeatCount = 0;
 
 
   while(1) {
@@ -137,19 +140,27 @@ void startCProxyServer(char *sproxyIPAddr) {
   else {
       /*one of the both sockets has data to be received*/
       if(FD_ISSET(socketFromTelnetClient, &readfds)) {
-          bytes_received = recv(socketFromTelnetClient, dataPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-          send(socketFromSProxy, dataPacket.payload, sizeof(char) * bytes_received, 0);
-          fprintf(stderr,"user -> telnet %d bytes\n", bytes_received);
+
+          bytes_received = recv(socketFromTelnetClient, proxyPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
+          proxyPacket.type = APP_DATA_TYPE;
+          send(socketFromSProxy, &proxyPacket, sizeof(int) + sizeof(char) * bytes_received, 0);
       }
 
       if(FD_ISSET(socketFromSProxy, &readfds)) {
-          bytes_received = recv(socketFromSProxy, dataPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-          send(socketFromTelnetClient, dataPacket.payload, sizeof(char) * bytes_received, 0);
-          fprintf(stderr,"telnet -> user %d bytes\n", bytes_received);
+          bytes_received = recv(socketFromSProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
+          if(proxyPacket.type == APP_DATA_TYPE)
+            send(socketFromTelnetClient, proxyPacket.payload, sizeof(char) * bytes_received - sizeof(int), 0);
+          if(proxyPacket.type == HEARTBEAT_TYPE) {
+              heartBeatCount = proxyPacket.payload[0]++;
+              send(socketFromSProxy, &proxyPacket, bytes_received, 0);
+              fprintf(stderr,"cproxy received hearBeat.. sending %d\n", heartBeatCount);
+          }
+
+          //fprintf(stderr,"telnet -> user %d bytes\n", bytes_received);
       }
 
 
-      memset(payload, 0, sizeof(char)* MAXPAYLOAD);
+      memset(&proxyPacket, 0, sizeof(proxyPacket_t));
       bytes_received = 0;
 
   }
