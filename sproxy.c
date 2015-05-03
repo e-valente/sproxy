@@ -38,14 +38,12 @@ void error(char *msg){
 /*It will receive incoming connections from the CProxy client*/
 void startSProxyServer() {
 
-  int sockfd, bytes_received, bytes_sent;
+  int sockfd, bytes_received;
   socklen_t clientlen;
   struct sockaddr_in local_serv_addr, client_addr, serv_addr;
   fd_set readfds;
   struct timeval tv;
   int ret, n;
-  appData_t dataPacket;
-  heartBeat_t heartBeatPacket;
   proxyPacket_t proxyPacket;
   int heartBeatCount;
 
@@ -90,8 +88,35 @@ void startSProxyServer() {
    if (connect(socketFromTelnetServer,(struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
     error ("ERROR connecting");
 
-   /*fprintf(stderr, "TELNET:\n%s\n", payload);*/
+   /*waits for the initialization*/
+   while(1) {
 
+       /*clear the set ahead of time*/
+       FD_ZERO(&readfds);
+       //FD_SET(socketFromTelnetServer, &readfds);
+       /*this socket is going to be "greater"*/
+       FD_SET(socketFromCProxy, &readfds);
+
+       /*setting our delay for the events*/
+       tv.tv_sec = 5;
+       tv.tv_usec = 500000;
+
+       /*param for select()*/
+       n = socketFromCProxy+ 1;
+
+       ret = select(n, &readfds, NULL, NULL, &tv);
+
+       if(ret == -1)
+           fprintf(stderr, "Error in select()!\n");
+       else if(ret == 0)
+           fprintf(stderr, "Timeout occurred! No data\n");
+       else{
+           recv(socketFromCProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
+           if(proxyPacket.type == NEW_CONNECTION_TYPE)
+               break;
+       }
+
+   }
 
   /*At this point we have two active sockets:
    * one is socketFromTelnetClient connected to the end user
@@ -99,59 +124,57 @@ void startSProxyServer() {
    * */
 
    /*populating the packet headers*/
-   dataPacket.type = APP_DATA_TYPE;
-   heartBeatPacket.type = HEARTBEAT_TYPE;
    heartBeatCount = 0;
 
   while(1) {
 
-  /*clear the set ahead of time*/
-  FD_ZERO(&readfds);
-  //FD_SET(socketFromTelnetServer, &readfds);
-  /*this socket is going to be "greater"*/
-  FD_SET(socketFromCProxy, &readfds);
-  FD_SET(socketFromTelnetServer, &readfds);
+      /*clear the set ahead of time*/
+      FD_ZERO(&readfds);
+      //FD_SET(socketFromTelnetServer, &readfds);
+      /*this socket is going to be "greater"*/
+      FD_SET(socketFromCProxy, &readfds);
+      FD_SET(socketFromTelnetServer, &readfds);
 
 
-  /*setting our delay for the events*/
-  tv.tv_sec = 5;
-  tv.tv_usec = 500000;
+      /*setting our delay for the events*/
+      tv.tv_sec = 5;
+      tv.tv_usec = 500000;
 
-  /*param for select()*/
-  n = socketFromTelnetServer+ 1;
+      /*param for select()*/
+      n = socketFromTelnetServer+ 1;
 
-  ret = select(n, &readfds, NULL, NULL, &tv);
+      ret = select(n, &readfds, NULL, NULL, &tv);
 
-  if(ret == -1)
-      fprintf(stderr, "Error in select()!\n");
-  else if(ret == 0)
-      fprintf(stderr, "Timeout occurred! No data after the specified time!\n");
-  else {
-      /*one of the both sockets has data to be received*/
-      if(FD_ISSET(socketFromTelnetServer, &readfds)) {
-          bytes_received = recv(socketFromTelnetServer, proxyPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-          /*set header to connect to cproxy*/
-          proxyPacket.type = APP_DATA_TYPE;
-          send(socketFromCProxy, &proxyPacket, bytes_received + sizeof(int), 0);
-          fprintf(stderr,"telnet server -> cproxy %d bytes\n", bytes_received);
-      }
-
-      if(FD_ISSET(socketFromCProxy, &readfds)) {
-          bytes_received = recv(socketFromCProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
-          if(proxyPacket.type == APP_DATA_TYPE)
-            send(socketFromTelnetServer, proxyPacket.payload, bytes_received - sizeof(int), 0);
-          if(proxyPacket.type == HEARTBEAT_TYPE) {
-              proxyPacket.payload[0]++;
-              send(socketFromCProxy, &proxyPacket, bytes_received, 0);
-          fprintf(stderr,"cproxy -> telnet server %d bytes\n", bytes_received);
+      if(ret == -1)
+          fprintf(stderr, "Error in select()!\n");
+      else if(ret == 0)
+          fprintf(stderr, "Timeout occurred! No data after the specified time!\n");
+      else {
+          /*one of the both sockets has data to be received*/
+          if(FD_ISSET(socketFromTelnetServer, &readfds)) {
+              bytes_received = recv(socketFromTelnetServer, proxyPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
+              /*set header to connect to cproxy*/
+              proxyPacket.type = APP_DATA_TYPE;
+              send(socketFromCProxy, &proxyPacket, bytes_received + sizeof(int), 0);
+              fprintf(stderr,"telnet server -> cproxy %d bytes\n", bytes_received);
           }
+
+          if(FD_ISSET(socketFromCProxy, &readfds)) {
+              bytes_received = recv(socketFromCProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
+              if(proxyPacket.type == APP_DATA_TYPE)
+                  send(socketFromTelnetServer, proxyPacket.payload, bytes_received - sizeof(int), 0);
+              if(proxyPacket.type == HEARTBEAT_TYPE) {
+                  proxyPacket.payload[0]++;
+                  send(socketFromCProxy, &proxyPacket, bytes_received, 0);
+                  fprintf(stderr,"cproxy -> telnet server %d bytes\n", bytes_received);
+              }
+          }
+
+
+          memset(&proxyPacket, 0, sizeof(proxyPacket_t));
+          bytes_received = 0;
+
       }
-
-
-      memset(&proxyPacket, 0, sizeof(proxyPacket_t));
-      bytes_received = 0;
-
-  }
   }
 
 
