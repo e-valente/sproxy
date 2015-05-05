@@ -112,7 +112,7 @@ void startSProxyServer() {
            fprintf(stderr, "Timeout occurred! No data\n");
        else{
            recv(socketFromCProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
-           if(proxyPacket.type == NEW_CONNECTION_TYPE)
+           if(proxyPacket.header.type == NEW_CONNECTION_TYPE)
                break;
        }
 
@@ -154,17 +154,17 @@ void startSProxyServer() {
           if(FD_ISSET(socketFromTelnetServer, &readfds)) {
               bytes_received = recv(socketFromTelnetServer, proxyPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
               /*set header to connect to cproxy*/
-              proxyPacket.type = APP_DATA_TYPE;
-              send(socketFromCProxy, &proxyPacket, bytes_received + sizeof(int), 0);
+              proxyPacket.header.type = APP_DATA_TYPE;
+              send(socketFromCProxy, &proxyPacket, bytes_received + sizeof(proxyHeader_t), 0);
               fprintf(stderr,"telnet server -> cproxy %d bytes\n", bytes_received);
           }
 
           if(FD_ISSET(socketFromCProxy, &readfds)) {
               bytes_received = recv(socketFromCProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
-              if(proxyPacket.type == APP_DATA_TYPE)
-                  send(socketFromTelnetServer, proxyPacket.payload, bytes_received - sizeof(int), 0);
-              if(proxyPacket.type == HEARTBEAT_TYPE) {
-                  proxyPacket.payload[0]++;
+              if(proxyPacket.header.type == APP_DATA_TYPE)
+                  send(socketFromTelnetServer, proxyPacket.payload, bytes_received - sizeof(proxyHeader_t), 0);
+              if(proxyPacket.header.type == HEARTBEAT_TYPE) {
+                  proxyPacket.header.beatHeart++;
                   send(socketFromCProxy, &proxyPacket, bytes_received, 0);
                   fprintf(stderr,"cproxy -> telnet server %d bytes\n", bytes_received);
               }

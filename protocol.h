@@ -9,19 +9,13 @@
 
 #define MAXPAYLOAD 10000
 
-
-typedef struct heartbeat{
+typedef struct proxyheader{
     unsigned char type;
-    unsigned payload;
-}heartBeat_t;
-
-typedef struct appdata{
-    unsigned char type;
-    char payload[MAXPAYLOAD];
-}appData_t;
+    unsigned char beatHeart;
+}proxyHeader_t;
 
 typedef struct proxypacket{
-    unsigned char type;
+    proxyHeader_t header;
     char payload[MAXPAYLOAD];
 
 }proxyPacket_t;

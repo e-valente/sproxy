@@ -44,7 +44,7 @@ void startCProxyServer(char *sproxyIPAddr) {
   struct timeval tv;
   int n, ret;
   proxyPacket_t proxyPacket;
-  int heartBeatCount;
+  unsigned char heartBeatCount;
 
   /*connects to the SPROXY server*/
   socketFromSProxy = socket (AF_INET, SOCK_STREAM, 0);
@@ -92,7 +92,7 @@ void startCProxyServer(char *sproxyIPAddr) {
     error("ERROR on accept");
 
   /*to initialize telnet connection on sproxy side*/
-  proxyPacket.type = NEW_CONNECTION_TYPE;
+  proxyPacket.header.type = NEW_CONNECTION_TYPE;
   send(socketFromSProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
 
 
@@ -146,16 +146,16 @@ void startCProxyServer(char *sproxyIPAddr) {
           if(FD_ISSET(socketFromTelnetClient, &readfds)) {
 
               bytes_received = recv(socketFromTelnetClient, proxyPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
-              proxyPacket.type = APP_DATA_TYPE;
-              send(socketFromSProxy, &proxyPacket, sizeof(int) + sizeof(char) * bytes_received, 0);
+              proxyPacket.header.type = APP_DATA_TYPE;
+              send(socketFromSProxy, &proxyPacket, sizeof(proxyHeader_t) + sizeof(char) * bytes_received, 0);
           }
 
           if(FD_ISSET(socketFromSProxy, &readfds)) {
               bytes_received = recv(socketFromSProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
-              if(proxyPacket.type == APP_DATA_TYPE)
-                  send(socketFromTelnetClient, proxyPacket.payload, sizeof(char) * bytes_received - sizeof(int), 0);
-              if(proxyPacket.type == HEARTBEAT_TYPE) {
-                  heartBeatCount = proxyPacket.payload[0]++;
+              if(proxyPacket.header.type == APP_DATA_TYPE)
+                  send(socketFromTelnetClient, proxyPacket.payload, sizeof(char) * bytes_received - sizeof(proxyHeader_t), 0);
+              if(proxyPacket.header.type == HEARTBEAT_TYPE) {
+                  heartBeatCount = proxyPacket.header.beatHeart++;
                   send(socketFromSProxy, &proxyPacket, bytes_received, 0);
                   fprintf(stderr,"cproxy received hearBeat.. sending %d\n", heartBeatCount);
               }
