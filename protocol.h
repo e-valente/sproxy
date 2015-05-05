@@ -11,6 +11,7 @@
 
 typedef struct proxyheader{
     unsigned char type;
+    unsigned int ack;
     unsigned char beatHeart;
 }proxyHeader_t;
 

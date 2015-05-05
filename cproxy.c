@@ -45,6 +45,7 @@ void startCProxyServer(char *sproxyIPAddr) {
   int n, ret;
   proxyPacket_t proxyPacket;
   unsigned char heartBeatCount;
+  unsigned int nextACK;
 
   /*connects to the SPROXY server*/
   socketFromSProxy = socket (AF_INET, SOCK_STREAM, 0);
@@ -105,6 +106,8 @@ void startCProxyServer(char *sproxyIPAddr) {
    * one is socketFromTelnetClient connected to the end user
    * and socketFromTelnetClient connected to the SProxy
    * */
+      proxyPacket.header.ack = 0;
+      nextACK = 1;
       while(1) {
           /*clear the set ahead of time*/
           FD_ZERO(&readfds);
@@ -132,13 +135,17 @@ void startCProxyServer(char *sproxyIPAddr) {
 
                   bytes_received = recv(socketFromTelnetClient, proxyPacket.payload, sizeof(char) * MAXPAYLOAD, 0);
                   proxyPacket.header.type = APP_DATA_TYPE;
+                  fprintf(stderr, "ACK: %d\n", proxyPacket.header.ack);
                   send(socketFromSProxy, &proxyPacket, sizeof(proxyHeader_t) + sizeof(char) * bytes_received, 0);
               }
 
               if(FD_ISSET(socketFromSProxy, &readfds)) {
                   bytes_received = recv(socketFromSProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
-                  if(proxyPacket.header.type == APP_DATA_TYPE)
-                      send(socketFromTelnetClient, proxyPacket.payload, sizeof(char) * bytes_received - sizeof(proxyHeader_t), 0);
+                  if(proxyPacket.header.type == APP_DATA_TYPE && bytes_received > 0) {
+                      /*TODO verify ACK*/
+                      proxyPacket.header.ack++;
+                      send(socketFromTelnetClient, proxyPacket.payload, bytes_received - sizeof(proxyHeader_t), 0);
+                  }
                   if(proxyPacket.header.type == HEARTBEAT_TYPE) {
                       heartBeatCount = proxyPacket.header.beatHeart++;
                       send(socketFromSProxy, &proxyPacket, bytes_received, 0);
@@ -149,7 +156,7 @@ void startCProxyServer(char *sproxyIPAddr) {
               }
 
 
-              memset(&proxyPacket, 0, sizeof(proxyPacket_t));
+              memset(proxyPacket.payload, 0, sizeof(char) * MAXPAYLOAD);
               bytes_received = 0;
 
           }
