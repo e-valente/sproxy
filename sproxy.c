@@ -47,6 +47,7 @@ void startSProxyServer() {
   proxyPacket_t proxyPacket;
   int heartBeatCount;
   int nextACK;
+  int lastCheckedHeartBeat, receivedHeartBeat, tries;
 
   /*create a stream socket (TCP)*/
   sockfd = socket (AF_INET, SOCK_STREAM, 0);
@@ -126,7 +127,9 @@ void startSProxyServer() {
    * */
 
    /*populating the packet headers*/
-   heartBeatCount = 0;
+   receivedHeartBeat = -1;
+   lastCheckedHeartBeat = 0;
+   tries = 0;
 
   while(1) {
 
@@ -139,7 +142,7 @@ void startSProxyServer() {
 
 
       /*setting our delay for the events*/
-      tv.tv_sec = 5;
+      tv.tv_sec = 1;
       tv.tv_usec = 500000;
 
       /*param for select()*/
@@ -149,8 +152,21 @@ void startSProxyServer() {
 
       if(ret == -1)
           fprintf(stderr, "Error in select()!\n");
-      else if(ret == 0)
+      else if(ret == 0) {
           fprintf(stderr, "Timeout occurred! No data after the specified time!\n");
+          fprintf(stderr, "checking heartbeat: last and received %d %d \n", lastCheckedHeartBeat, receivedHeartBeat);
+          if(lastCheckedHeartBeat == receivedHeartBeat) {
+              tries++;
+              if(tries == 3)
+                fprintf(stderr, "--->tries %d Disconnected!\n", tries);
+              else fprintf(stderr, "--->Tries %d\n", tries);
+          }
+          else {
+              lastCheckedHeartBeat = receivedHeartBeat;
+              tries = 0;
+          }
+
+      }
       else {
           /*one of the both sockets has data to be received*/
           if(FD_ISSET(socketFromTelnetServer, &readfds)) {
@@ -171,9 +187,11 @@ void startSProxyServer() {
                   send(socketFromTelnetServer, proxyPacket.payload, bytes_received - sizeof(proxyHeader_t), 0);
               }
               if(proxyPacket.header.type == HEARTBEAT_TYPE) {
-                  proxyPacket.header.beatHeart++;
-                  send(socketFromCProxy, &proxyPacket, bytes_received, 0);
-                  //fprintf(stderr,"cproxy -> telnet server %d bytes\n", bytes_received);
+                  receivedHeartBeat = proxyPacket.header.beatHeart;
+              }
+
+              if(proxyPacket.header.type == NEW_CONNECTION_TYPE) {
+                  fprintf(stderr, "New connection!\n");
               }
           }
 

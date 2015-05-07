@@ -44,7 +44,7 @@ void startCProxyServer(char *sproxyIPAddr) {
   struct timeval tv;
   int n, ret;
   proxyPacket_t proxyPacket;
-  unsigned char heartBeatCount;
+  unsigned char heartBreak;
   unsigned int nextACK;
 
   /*connects to the SPROXY server*/
@@ -108,6 +108,7 @@ void startCProxyServer(char *sproxyIPAddr) {
    * */
       proxyPacket.header.ack = 0;
       nextACK = 1;
+      heartBreak = 0;
       while(1) {
           /*clear the set ahead of time*/
           FD_ZERO(&readfds);
@@ -117,7 +118,7 @@ void startCProxyServer(char *sproxyIPAddr) {
 
 
           /*setting our delay for the events*/
-          tv.tv_sec = 5;
+          tv.tv_sec = 1;
           tv.tv_usec = 500000;
 
           /*param for select()*/
@@ -127,8 +128,12 @@ void startCProxyServer(char *sproxyIPAddr) {
 
           if(ret == -1)
               fprintf(stderr, "Error in select()!\n");
-          else if(ret == 0)
-              fprintf(stderr, "Timeout occurred! No data after the specified time!\n");
+          else if(ret == 0) {
+              fprintf(stderr, "Timeout occurred! No data after the specified time!\nSending heartbeat...\n");
+              proxyPacket.header.type = HEARTBEAT_TYPE;
+              proxyPacket.header.beatHeart = heartBreak++;
+              send(socketFromSProxy, &proxyPacket, sizeof(proxyPacket_t), 0);
+          }
           else {
               /*one of the both sockets has data to be received*/
               if(FD_ISSET(socketFromTelnetClient, &readfds)) {
@@ -146,13 +151,6 @@ void startCProxyServer(char *sproxyIPAddr) {
                       proxyPacket.header.ack++;
                       send(socketFromTelnetClient, proxyPacket.payload, bytes_received - sizeof(proxyHeader_t), 0);
                   }
-                  if(proxyPacket.header.type == HEARTBEAT_TYPE) {
-                      heartBeatCount = proxyPacket.header.beatHeart++;
-                      send(socketFromSProxy, &proxyPacket, bytes_received, 0);
-                      fprintf(stderr,"cproxy received hearBeat.. sending %d\n", heartBeatCount);
-                  }
-
-                  //fprintf(stderr,"telnet -> user %d bytes\n", bytes_received);
               }
 
 
